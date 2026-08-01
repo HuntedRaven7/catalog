@@ -2,12 +2,12 @@
 
 The "unifying" model
 
-A GTK4 GUI for [`univ`](https://github.com/edward/univpkg-rs), inspired by the
+A GTK4 GUI for [`univ`](https://github.com/HuntedRaven7/univpkg-rs), inspired by the
 [Bazaar](https://github.com/bazaar-org/bazaar). It talks to
 `univ` the same way the built-in TUI does — by shelling out to the binary —
 so the store stays the single source of truth.
 
-The UI is written against **libadapta** (the theme-aware libadwaita fork) via
+The UI is written against **libadapta** (the theme-aware libadwaita soft fork) via
 its `adw-compat.h` header, so the code uses the familiar `Adw*` names and would
 also compile against plain libadwaita unchanged.
 
