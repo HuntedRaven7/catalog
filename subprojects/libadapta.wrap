@@ -1,7 +1,0 @@
-[wrap-git]
-url = https://github.com/xapp-project/libadapta
-revision = ac83b1b78641aad5dbd190d85757118a8070bf37
-depth = 1
-
-[provide]
-libadapta-1 = libadapta_dep
