@@ -1,0 +1,10 @@
+/build/
+/builddir/
+/_build/
+/meson-logs/
+/meson-private/
+subprojects/libadapta/
+subprojects/packagecache/
+*.o
+*.a
+*.so
