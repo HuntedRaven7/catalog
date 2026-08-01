@@ -1,7 +1,5 @@
 # Catalog
 
-The "unifying" model
-
 A GTK4 GUI for [`univ`](https://github.com/HuntedRaven7/univpkg-rs), inspired by the
 [Bazaar](https://github.com/bazaar-org/bazaar). It talks to
 `univ` the same way the built-in TUI does — by shelling out to the binary —
