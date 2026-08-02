@@ -60,8 +60,6 @@ void query_packages(const std::vector<std::string> &args, QueryCallback cb) {
                 job->ok = true;
                 job->message = stdout_buf ? stdout_buf : "";
             } else {
-                job->message =
-                    check && check->message ? check->message : "command failed";
                 g_clear_error(&check);
             }
         } else {
@@ -205,6 +203,7 @@ void stream_read_done(GObject *source, GAsyncResult *result, gpointer data) {
 }
 
 void stream_wait_done(GObject *source, GAsyncResult *result, gpointer data) {
+    (void)source;
     auto *job = static_cast<StreamJob *>(data);
     GError *error = nullptr;
     if (g_subprocess_wait_check_finish(job->proc, result, &error)) {

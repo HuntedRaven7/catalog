@@ -127,6 +127,29 @@ static void append_repo_config(const std::string &kind,
     }
 }
 
+static void remove_repo_from_file(const std::string &path,
+                                  const std::string &name) {
+    g_autofree char *contents = nullptr;
+    if (!g_file_get_contents(path.c_str(), &contents, nullptr, nullptr))
+        return;
+    std::string out;
+    char **lines = g_strsplit(contents, "\n", -1);
+    for (char **line = lines; *line; line++) {
+        char *trimmed = g_strstrip(*line);
+        if (*trimmed == '\0' || *trimmed == '#') {
+            out += std::string(trimmed) + "\n";
+            continue;
+        }
+        char **tok = g_strsplit_set(trimmed, " \t", -1);
+        bool match = tok[0] && name == tok[0];
+        g_strfreev(tok);
+        if (!match)
+            out += std::string(trimmed) + "\n";
+    }
+    g_strfreev(lines);
+    g_file_set_contents(path.c_str(), out.c_str(), -1, nullptr);
+}
+
 static void shuffle_packages(std::vector<Package> &packages) {
     static std::mt19937 rng([] {
         std::random_device rd;
@@ -330,7 +353,10 @@ static void ensure_repo_styles(GtkWidget *anchor) {
         ".repo-fedora { background-color: #57708F; }\n"
         ".repo-debian { background-color: #58111A; }\n"
         ".repo-text { color: #ffffff; }\n"
-        ".repo-sub { color: rgba(255, 255, 255, 0.8); }\n");
+        ".repo-sub { color: rgba(255, 255, 255, 0.8); }\n"
+        "entry.search.catalog-noresults > image:last-child {\n"
+        "  color: #e04545;\n"
+        "}\n");
     gtk_style_context_add_provider_for_display(
         gtk_widget_get_display(anchor), GTK_STYLE_PROVIDER(provider),
         GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -558,19 +584,19 @@ void CatalogWindow::on_browse_search_activate(GtkSearchEntry *, gpointer data) {
     self->do_search();
 }
 
-void CatalogWindow::on_featured_clicked(GtkButton *button, gpointer data) {
+void CatalogWindow::on_featured_clicked(GtkButton *button, gpointer) {
     auto *self = static_cast<CatalogWindow *>(
         g_object_get_data(G_OBJECT(button), "window"));
-    std::string name(static_cast<const char *>(data));
-    g_free(data);
+    const char *name = static_cast<const char *>(
+        g_object_get_data(G_OBJECT(button), "package"));
     self->open_browse(name, "");
 }
 
-void CatalogWindow::on_repo_clicked(GtkButton *button, gpointer data) {
+void CatalogWindow::on_repo_clicked(GtkButton *button, gpointer) {
     auto *self = static_cast<CatalogWindow *>(
         g_object_get_data(G_OBJECT(button), "window"));
-    std::string repo(static_cast<const char *>(data));
-    g_free(data);
+    const char *repo = static_cast<const char *>(
+        g_object_get_data(G_OBJECT(button), "repo"));
     self->open_browse("", repo);
 }
 
@@ -598,6 +624,7 @@ void CatalogWindow::on_add_repo_submit(GtkButton *button, gpointer) {
     }
     append_repo_config(kind, std::string(name) + " " + url);
     self->populate_repos();
+    self->populate_repos_page();
     self->toast("Added " + std::string(name));
     gtk_window_destroy(GTK_WINDOW(dialog));
 }
@@ -685,6 +712,40 @@ void CatalogWindow::on_update_clicked(GtkButton *, gpointer data) {
     static_cast<CatalogWindow *>(data)->upgrade_all();
 }
 
+gboolean CatalogWindow::on_key_pressed(GtkEventControllerKey *, guint keyval,
+                                       guint, GdkModifierType state,
+                                       gpointer data) {
+    auto *self = static_cast<CatalogWindow *>(data);
+
+    if (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK |
+                 GDK_META_MASK))
+        return GDK_EVENT_PROPAGATE;
+
+    gunichar ch = gdk_keyval_to_unicode(keyval);
+    if (ch == 0 || !g_unichar_isgraph(ch))
+        return GDK_EVENT_PROPAGATE;
+
+    GtkWidget *focus = gtk_window_get_focus(GTK_WINDOW(self->window_));
+    if (focus && GTK_IS_EDITABLE(focus))
+        return GDK_EVENT_PROPAGATE;
+
+    if (!self->browse_search_)
+        return GDK_EVENT_PROPAGATE;
+
+    adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(self->stack_),
+                                          "browse");
+    gtk_widget_grab_focus(self->browse_search_);
+
+    GtkEditable *editable = GTK_EDITABLE(self->browse_search_);
+    gtk_editable_set_position(editable, -1);
+    char buf[8];
+    int len = g_unichar_to_utf8(ch, buf);
+    int position = gtk_editable_get_position(editable);
+    gtk_editable_insert_text(editable, buf, len, &position);
+    gtk_editable_set_position(editable, position);
+    return GDK_EVENT_STOP;
+}
+
 void CatalogWindow::on_installed_install_clicked(GtkButton *, gpointer data) {
     static_cast<CatalogWindow *>(data)->installed_install();
 }
@@ -703,6 +764,7 @@ void CatalogWindow::on_browse_uninstall_clicked(GtkButton *, gpointer data) {
 
 CatalogWindow::CatalogWindow(GtkApplication *app) : app_(app) {
     build_ui();
+    populate_repos_page();
     gtk_window_set_default_size(GTK_WINDOW(window_), 1080, 680);
     refresh_installed();
     load_home();
@@ -757,6 +819,9 @@ void CatalogWindow::build_ui() {
                                         build_home_page(), "home", "Home",
                                         "go-home-symbolic");
     adw_view_stack_add_titled_with_icon(
+        ADW_VIEW_STACK(stack_), build_repos_page(), "repos", "Repositories",
+        "folder-download-symbolic");
+    adw_view_stack_add_titled_with_icon(
         ADW_VIEW_STACK(stack_), build_list_page(false), "installed",
         "Installed", "system-software-install-symbolic");
     adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(stack_),
@@ -772,6 +837,10 @@ void CatalogWindow::build_ui() {
 
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(window_),
                                        toast_overlay_);
+
+    GtkEventController *keys = gtk_event_controller_key_new();
+    g_signal_connect(keys, "key-pressed", G_CALLBACK(on_key_pressed), this);
+    gtk_widget_add_controller(window_, keys);
 
     log("catalog started");
     log("univ: " + univ_bin());
@@ -940,6 +1009,115 @@ GtkWidget *CatalogWindow::build_home_page() {
     return scroll;
 }
 
+GtkWidget *CatalogWindow::build_repos_page() {
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
+    GtkWidget *scroll = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),
+                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_has_frame(GTK_SCROLLED_WINDOW(scroll), FALSE);
+
+    GtkWidget *list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(list), GTK_SELECTION_NONE);
+    gtk_widget_set_hexpand(list, TRUE);
+    gtk_widget_set_vexpand(list, TRUE);
+
+    GtkWidget *placeholder = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    GtkWidget *placeholder_label =
+        gtk_label_new("No repositories configured yet");
+    gtk_widget_add_css_class(placeholder_label, "dim-label");
+    gtk_widget_set_margin_top(placeholder_label, 24);
+    gtk_box_append(GTK_BOX(placeholder), placeholder_label);
+
+    GtkWidget *add_card = make_repo_button("Add repository",
+                                           "configure a new source", "");
+    g_object_set_data(G_OBJECT(add_card), "window", this);
+    g_signal_connect(add_card, "clicked", G_CALLBACK(on_add_repo_clicked),
+                     nullptr);
+    gtk_box_append(GTK_BOX(placeholder), add_card);
+
+    gtk_list_box_set_placeholder(GTK_LIST_BOX(list), placeholder);
+
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), list);
+    gtk_box_append(GTK_BOX(box), scroll);
+
+    repos_list_ = list;
+    repos_placeholder_ = placeholder;
+    return box;
+}
+
+void CatalogWindow::populate_repos_page() {
+    clear_list(GTK_LIST_BOX(repos_list_));
+
+    std::vector<std::pair<std::string, std::string>> repos;
+    std::string base = std::string(g_get_home_dir()) + "/.local/univ/";
+    append_repos_from_file(base + "debrepos.conf", "deb", repos);
+    append_repos_from_file(base + "rpmrepos.conf", "rpm", repos);
+
+    bool any = false;
+    for (size_t i = 0; i < repos.size(); i++) {
+        bool seen = false;
+        for (size_t j = 0; j < i; j++)
+            if (repos[j].first == repos[i].first) {
+                seen = true;
+                break;
+            }
+        if (seen)
+            continue;
+        any = true;
+
+        GtkWidget *row = gtk_list_box_row_new();
+        GtkWidget *action = adw_action_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(action),
+                                      repos[i].first.c_str());
+        adw_action_row_set_subtitle(
+            ADW_ACTION_ROW(action),
+            repos[i].second == "deb" ? "deb repository" : "rpm repository");
+        GtkWidget *remove = gtk_button_new_from_icon_name(
+            "edit-delete-symbolic");
+        gtk_widget_set_tooltip_text(remove, "Remove repository");
+        gtk_widget_add_css_class(remove, "flat");
+        g_object_set_data(G_OBJECT(remove), "window", this);
+        g_object_set_data_full(G_OBJECT(remove), "name",
+                               g_strdup(repos[i].first.c_str()), g_free);
+        g_object_set_data_full(G_OBJECT(remove), "kind",
+                               g_strdup(repos[i].second.c_str()), g_free);
+        g_signal_connect(remove, "clicked",
+                         G_CALLBACK(on_remove_repo_clicked), nullptr);
+        adw_action_row_add_suffix(ADW_ACTION_ROW(action), remove);
+        gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), action);
+        gtk_list_box_append(GTK_LIST_BOX(repos_list_), row);
+    }
+
+    GtkWidget *add = make_repo_button("Add repository",
+                                      "configure a new source", "");
+    g_object_set_data(G_OBJECT(add), "window", this);
+    g_signal_connect(add, "clicked", G_CALLBACK(on_add_repo_clicked), nullptr);
+    if (any)
+        gtk_list_box_append(GTK_LIST_BOX(repos_list_), add);
+}
+
+void CatalogWindow::remove_repo(const std::string &name,
+                                const std::string &kind) {
+    std::string base = std::string(g_get_home_dir()) + "/.local/univ/";
+    std::string path =
+        base + (kind == "deb" ? "debrepos.conf" : "rpmrepos.conf");
+    remove_repo_from_file(path, name);
+    populate_repos_page();
+    populate_repos();
+    toast("Removed " + name);
+}
+
+void CatalogWindow::on_remove_repo_clicked(GtkButton *button, gpointer) {
+    auto *self = static_cast<CatalogWindow *>(
+        g_object_get_data(G_OBJECT(button), "window"));
+    const char *name = static_cast<const char *>(
+        g_object_get_data(G_OBJECT(button), "name"));
+    const char *kind = static_cast<const char *>(
+        g_object_get_data(G_OBJECT(button), "kind"));
+    self->remove_repo(name, kind);
+}
+
 void CatalogWindow::load_home() {
     std::vector<Package> cached = read_featured_cache();
     if (!cached.empty()) {
@@ -977,8 +1155,10 @@ void CatalogWindow::populate_home() {
         gtk_widget_add_css_class(
             banner, ("featured-banner-" + std::to_string(i)).c_str());
         g_signal_connect(banner, "clicked", G_CALLBACK(on_featured_clicked),
-                         g_strdup(pool[i].name.c_str()));
+                         nullptr);
         g_object_set_data(G_OBJECT(banner), "window", this);
+        g_object_set_data_full(G_OBJECT(banner), "package",
+                               g_strdup(pool[i].name.c_str()), g_free);
         banners.push_back(banner);
         adw_carousel_append(carousel, banner);
     }
@@ -1012,9 +1192,10 @@ void CatalogWindow::populate_repos() {
                              const std::string &subtitle,
                              const std::string &repo) {
         GtkWidget *btn = make_repo_button(title, subtitle, repo);
-        g_signal_connect(btn, "clicked", G_CALLBACK(on_repo_clicked),
-                         g_strdup(repo.c_str()));
+        g_signal_connect(btn, "clicked", G_CALLBACK(on_repo_clicked), nullptr);
         g_object_set_data(G_OBJECT(btn), "window", this);
+        g_object_set_data_full(G_OBJECT(btn), "repo",
+                               g_strdup(repo.c_str()), g_free);
         gtk_flow_box_append(GTK_FLOW_BOX(home_repos_), btn);
     };
 
@@ -1038,24 +1219,6 @@ void CatalogWindow::populate_repos() {
                                                    : "rpm repository";
         add_button(repos[i].first, sub, repos[i].first);
     }
-
-    GtkWidget *add = gtk_button_new();
-    gtk_widget_add_css_class(add, "card");
-    gtk_widget_set_size_request(add, 210, -1);
-    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-    gtk_widget_set_margin_start(row, 12);
-    gtk_widget_set_margin_end(row, 12);
-    gtk_widget_set_margin_top(row, 10);
-    gtk_widget_set_margin_bottom(row, 10);
-    GtkWidget *icon = gtk_image_new_from_icon_name("list-add-symbolic");
-    gtk_image_set_pixel_size(GTK_IMAGE(icon), 24);
-    GtkWidget *label = gtk_label_new("Add repository");
-    gtk_box_append(GTK_BOX(row), icon);
-    gtk_box_append(GTK_BOX(row), label);
-    gtk_button_set_child(GTK_BUTTON(add), row);
-    g_signal_connect(add, "clicked", G_CALLBACK(on_add_repo_clicked), this);
-    g_object_set_data(G_OBJECT(add), "window", this);
-    gtk_flow_box_append(GTK_FLOW_BOX(home_repos_), add);
 }
 
 void CatalogWindow::open_browse(const std::string &query,
@@ -1140,6 +1303,13 @@ void CatalogWindow::refresh_installed() {
                    });
 }
 
+void CatalogWindow::set_browse_no_results(bool no_results) {
+    if (no_results)
+        gtk_widget_add_css_class(browse_search_, "catalog-noresults");
+    else
+        gtk_widget_remove_css_class(browse_search_, "catalog-noresults");
+}
+
 void CatalogWindow::do_search() {
     std::string q = browse_query_;
     if (q.empty() && browse_repo_.empty()) {
@@ -1147,11 +1317,13 @@ void CatalogWindow::do_search() {
         browse_selected_ = -1;
         clear_list(GTK_LIST_BOX(browse_list_));
         browse_detail_.clear();
+        set_browse_no_results(false);
         gtk_label_set_text(GTK_LABEL(browse_placeholder_),
                            "Search the repositories…");
         return;
     }
 
+    set_browse_no_results(false);
     std::string hint = browse_repo_.empty() ? "Searching…"
                                             : "Loading " + browse_repo_ + "…";
     gtk_label_set_text(GTK_LABEL(browse_placeholder_), hint.c_str());
@@ -1168,6 +1340,9 @@ void CatalogWindow::do_search() {
                                if (browse_repo_.empty() ||
                                    p.repo == browse_repo_)
                                    browse_.push_back(std::move(p));
+                       } else if (message.find("no packages match") !=
+                                  std::string::npos) {
+                           browse_.clear();
                        } else {
                            browse_.clear();
                            toast("Search failed: " + message);
@@ -1187,12 +1362,18 @@ void CatalogWindow::populate_browse() {
     }
 
     std::string message;
-    if (browse_.empty())
-        message = browse_repo_.empty()
-                      ? "No packages found"
-                      : "No packages found in " + browse_repo_;
-    else
+    if (browse_.empty()) {
+        if (!browse_repo_.empty())
+            message = "No packages found in " + browse_repo_;
+        else if (!browse_query_.empty())
+            message = "Didn't find anything under \"" + browse_query_ + "\"";
+        else
+            message = "No packages found";
+        set_browse_no_results(true);
+    } else {
         message = std::to_string(browse_.size()) + " result(s)";
+        set_browse_no_results(false);
+    }
     gtk_label_set_text(GTK_LABEL(browse_placeholder_), message.c_str());
 }
 

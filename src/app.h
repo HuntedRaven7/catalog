@@ -74,6 +74,9 @@ private:
     std::vector<Package> home_candidates_;
     guint home_carousel_timeout_ = 0;
 
+    GtkWidget *repos_list_ = nullptr;
+    GtkWidget *repos_placeholder_ = nullptr;
+
     GtkWidget *log_view_ = nullptr;
     GtkTextBuffer *log_buffer_ = nullptr;
 
@@ -83,6 +86,7 @@ private:
     GtkWidget *build_list_page(bool browse);
     GtkWidget *build_log_page();
     GtkWidget *build_home_page();
+    GtkWidget *build_repos_page();
 
     void populate_installed();
     void refresh_installed();
@@ -91,6 +95,9 @@ private:
     void load_home();
     void populate_home();
     void populate_repos();
+    void populate_repos_page();
+    void remove_repo(const std::string &name, const std::string &kind);
+    void set_browse_no_results(bool no_results);
     void open_browse(const std::string &query, const std::string &repo);
     void show_add_repo_dialog();
 
@@ -117,6 +124,7 @@ private:
     static void on_repo_clicked(GtkButton *, gpointer);
     static void on_add_repo_clicked(GtkButton *, gpointer);
     static void on_add_repo_submit(GtkButton *, gpointer);
+    static void on_remove_repo_clicked(GtkButton *, gpointer);
     static gboolean on_featured_tick(gpointer);
     static void on_refresh_clicked(GtkButton *, gpointer);
     static void on_update_clicked(GtkButton *, gpointer);
@@ -124,6 +132,8 @@ private:
     static void on_installed_uninstall_clicked(GtkButton *, gpointer);
     static void on_browse_install_clicked(GtkButton *, gpointer);
     static void on_browse_uninstall_clicked(GtkButton *, gpointer);
+    static gboolean on_key_pressed(GtkEventControllerKey *, guint, guint,
+                                   GdkModifierType, gpointer);
 };
 
 }
