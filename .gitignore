@@ -4,8 +4,9 @@
 /meson-logs/
 /meson-private/
 
-subprojects/libadapta/
-subprojects/packagecache/
+/subprojects/*/
+!/subprojects/packagefiles/
+subprojects/.wraplock
 
 *.o
 *.a
