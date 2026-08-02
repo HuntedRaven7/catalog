@@ -833,6 +833,11 @@ void CatalogWindow::on_update_clicked(GtkButton *, gpointer data) {
     static_cast<CatalogWindow *>(data)->upgrade_all();
 }
 
+void CatalogWindow::on_update_all_clicked(GtkButton *, gpointer data) {
+    auto *self = static_cast<CatalogWindow *>(data);
+    self->upgrade_all();
+}
+
 gboolean CatalogWindow::on_key_pressed(GtkEventControllerKey *, guint keyval,
                                        guint, GdkModifierType state,
                                        gpointer data) {
@@ -969,13 +974,6 @@ void CatalogWindow::build_ui() {
                      this);
     adw_header_bar_pack_end(ADW_HEADER_BAR(header), refresh_btn_);
 
-    update_btn_ = gtk_button_new_from_icon_name(
-        "software-update-available-symbolic");
-    gtk_widget_set_tooltip_text(update_btn_, "Upgrade all packages");
-    g_signal_connect(update_btn_, "clicked", G_CALLBACK(on_update_clicked),
-                     this);
-    adw_header_bar_pack_end(ADW_HEADER_BAR(header), update_btn_);
-
     GtkWidget *style_btn = gtk_menu_button_new();
     gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(style_btn),
                                   "preferences-system-symbolic");
@@ -1030,6 +1028,10 @@ void CatalogWindow::build_ui() {
     adw_view_stack_add_titled_with_icon(
         ADW_VIEW_STACK(stack_), build_list_page(false), "installed",
         "Installed", "system-software-install-symbolic");
+    adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(stack_),
+                                        build_update_page(), "updates",
+                                        "Updates",
+                                        "software-update-available-symbolic");
     adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(stack_),
                                         build_list_page(true), "browse",
                                         "Browse", "edit-find-symbolic");
@@ -1151,6 +1153,57 @@ GtkWidget *CatalogWindow::build_log_page() {
     log_buffer_ = gtk_text_view_get_buffer(GTK_TEXT_VIEW(log_view_));
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), log_view_);
     return scroll;
+}
+
+GtkWidget *CatalogWindow::build_update_page() {
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
+    GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    gtk_widget_set_margin_start(header, 24);
+    gtk_widget_set_margin_end(header, 24);
+    gtk_widget_set_margin_top(header, 12);
+    gtk_widget_set_margin_bottom(header, 12);
+
+    GtkWidget *heading = gtk_label_new("Updates");
+    gtk_widget_add_css_class(heading, "title-3");
+    gtk_label_set_xalign(GTK_LABEL(heading), 0.0f);
+    gtk_widget_set_hexpand(heading, TRUE);
+    gtk_widget_set_halign(heading, GTK_ALIGN_START);
+
+    update_all_btn_ = gtk_button_new_with_label("Update all!");
+    gtk_widget_add_css_class(update_all_btn_, "suggested-action");
+    gtk_widget_set_sensitive(update_all_btn_, FALSE);
+    g_signal_connect(update_all_btn_, "clicked",
+                     G_CALLBACK(on_update_all_clicked), this);
+
+    gtk_box_append(GTK_BOX(header), heading);
+    gtk_box_append(GTK_BOX(header), update_all_btn_);
+
+    GtkWidget *scroll = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),
+                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_has_frame(GTK_SCROLLED_WINDOW(scroll), FALSE);
+
+    GtkWidget *list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(list), GTK_SELECTION_NONE);
+    gtk_widget_set_hexpand(list, TRUE);
+    gtk_widget_set_vexpand(list, TRUE);
+
+    GtkWidget *placeholder = gtk_label_new("No updates found!");
+    gtk_widget_add_css_class(placeholder, "dim-label");
+    gtk_widget_set_margin_top(placeholder, 32);
+    gtk_list_box_set_placeholder(GTK_LIST_BOX(list), placeholder);
+
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), list);
+
+    gtk_box_append(GTK_BOX(box), header);
+    gtk_box_append(GTK_BOX(box), scroll);
+
+    update_list_ = list;
+    update_placeholder_ = placeholder;
+
+    refresh_updates();
+    return box;
 }
 
 GtkWidget *CatalogWindow::build_home_page() {
@@ -1785,7 +1838,7 @@ void CatalogWindow::set_busy(bool busy) {
     gtk_spinner_set_spinning(GTK_SPINNER(spinner_), b);
     gtk_widget_set_visible(spinner_, b);
     gtk_widget_set_sensitive(refresh_btn_, !b);
-    gtk_widget_set_sensitive(update_btn_, !b);
+    gtk_widget_set_sensitive(update_all_btn_, !b && !updates_.empty());
     gtk_widget_set_sensitive(view_switcher_, !b);
     update_buttons();
 }
@@ -1853,6 +1906,52 @@ void CatalogWindow::browse_uninstall() {
 void CatalogWindow::upgrade_all() {
     if (busy())
         return;
-    start_task("upgrading all packages", {"upgrade"});
+    start_task("upgrading all packages", {"upgrade"}, [this](int) {
+        refresh_updates();
+        refresh_installed();
+    });
 }
+
+void CatalogWindow::refresh_updates() {
+    updates_loaded_ = false;
+    updates_error_.clear();
+    updates_.clear();
+    populate_update_page();
+
+    query_packages({"upgrade", "--dry-run"},
+                   [this](bool ok, std::vector<Package> pkgs,
+                          const std::string &message) {
+                       updates_loaded_ = true;
+                       if (ok) {
+                           updates_ = std::move(pkgs);
+                           updates_error_.clear();
+                       } else {
+                           updates_.clear();
+                           updates_error_ = message;
+                       }
+                       populate_update_page();
+                       set_busy(false);
+                   });
+}
+
+void CatalogWindow::populate_update_page() {
+    clear_list(GTK_LIST_BOX(update_list_));
+
+    for (const Package &p : updates_) {
+        GtkWidget *row = make_row(p);
+        gtk_list_box_append(GTK_LIST_BOX(update_list_), row);
+    }
+
+    std::string message;
+    if (!updates_error_.empty())
+        message = "Could not check updates: " + updates_error_;
+    else if (!updates_loaded_)
+        message = "Checking for updates…";
+    else if (updates_.empty())
+        message = "No updates found!";
+    gtk_label_set_text(GTK_LABEL(update_placeholder_), message.c_str());
+
+    gtk_widget_set_sensitive(update_all_btn_, !busy() && !updates_.empty());
+}
+
 }

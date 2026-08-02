@@ -50,7 +50,6 @@ private:
     GtkWidget *title_ = nullptr;
     GtkWidget *spinner_ = nullptr;
     GtkWidget *refresh_btn_ = nullptr;
-    GtkWidget *update_btn_ = nullptr;
     GtkWidget *view_switcher_ = nullptr;
     GtkWidget *stack_ = nullptr;
     GtkApplication *app_ = nullptr;
@@ -79,6 +78,14 @@ private:
     guint browse_timeout_ = 0;
     int browse_selected_ = -1;
 
+    GtkWidget *update_page_ = nullptr;
+    GtkWidget *update_list_ = nullptr;
+    GtkWidget *update_placeholder_ = nullptr;
+    GtkWidget *update_all_btn_ = nullptr;
+    std::vector<Package> updates_;
+    bool updates_loaded_ = false;
+    std::string updates_error_;
+
     GtkWidget *home_featured_ = nullptr;
     GtkWidget *home_featured_dots_ = nullptr;
     GtkWidget *home_repos_ = nullptr;
@@ -102,6 +109,9 @@ private:
     GtkWidget *build_log_page();
     GtkWidget *build_home_page();
     GtkWidget *build_repos_page();
+    GtkWidget *build_update_page();
+    void refresh_updates();
+    void populate_update_page();
 
     void build_init_screen();
     void show_init_screen();
@@ -153,6 +163,7 @@ private:
     static void on_init_clicked(GtkButton *, gpointer);
     static void on_refresh_clicked(GtkButton *, gpointer);
     static void on_update_clicked(GtkButton *, gpointer);
+    static void on_update_all_clicked(GtkButton *, gpointer);
     static void on_installed_install_clicked(GtkButton *, gpointer);
     static void on_installed_uninstall_clicked(GtkButton *, gpointer);
     static void on_browse_install_clicked(GtkButton *, gpointer);
