@@ -41,6 +41,51 @@ static std::string initials_of(const std::string &name) {
     return out;
 }
 
+static std::string icon_style_config_path() {
+    return std::string(g_get_user_config_dir()) + "/catalog/config.ini";
+}
+
+static IconStyle read_icon_style() {
+    g_autoptr(GKeyFile) kf = g_key_file_new();
+    if (g_key_file_load_from_file(kf, icon_style_config_path().c_str(),
+                                  G_KEY_FILE_NONE, nullptr)) {
+        g_autofree char *value =
+            g_key_file_get_string(kf, "ui", "icon-style", nullptr);
+        if (value) {
+            std::string v = lower(value);
+            if (v == "kde")
+                return IconStyle::Kde;
+            if (v == "system")
+                return IconStyle::System;
+        }
+    }
+    return IconStyle::Gnome;
+}
+
+static void write_icon_style(IconStyle style) {
+    g_autoptr(GKeyFile) kf = g_key_file_new();
+    const char *value = style == IconStyle::Kde
+                            ? "kde"
+                            : (style == IconStyle::System ? "system"
+                                                          : "gnome");
+    g_key_file_set_string(kf, "ui", "icon-style", value);
+    std::string dir = std::string(g_get_user_config_dir()) + "/catalog";
+    g_mkdir_with_parents(dir.c_str(), 0700);
+    g_autofree char *data = g_key_file_to_data(kf, nullptr, nullptr);
+    g_file_set_contents(icon_style_config_path().c_str(), data, -1, nullptr);
+}
+
+static const char *icon_theme_name(IconStyle style) {
+    switch (style) {
+    case IconStyle::Gnome:
+        return "Adwaita";
+    case IconStyle::Kde:
+        return "breeze";
+    default:
+        return nullptr;
+    }
+}
+
 static std::string row_meta(const Package &p) {
     std::string out;
     auto append = [&out](const std::string &part) {
@@ -610,6 +655,24 @@ void CatalogWindow::on_browse_selected(GtkListBox *, GtkListBoxRow *row,
     self->update_buttons();
 }
 
+void CatalogWindow::on_icon_style_toggled(GtkCheckButton *button, gpointer data) {
+    auto *self = static_cast<CatalogWindow *>(data);
+    if (!gtk_check_button_get_active(button))
+        return;
+    IconStyle style = static_cast<IconStyle>(GPOINTER_TO_INT(
+        g_object_get_data(G_OBJECT(button), "style")));
+    if (style == self->icon_style_)
+        return;
+    self->icon_style_ = style;
+    write_icon_style(style);
+    self->apply_icon_style();
+    const char *label = style == IconStyle::Kde
+                            ? "KDE (Breeze)"
+                            : (style == IconStyle::System ? "Follow system"
+                                                          : "GNOME (Adwaita)");
+    self->toast("Icon style: " + std::string(label));
+}
+
 void CatalogWindow::on_installed_filter_changed(GtkSearchEntry *entry,
                                                 gpointer data) {
     auto *self = static_cast<CatalogWindow *>(data);
@@ -865,11 +928,26 @@ CatalogWindow::~CatalogWindow() {
         g_source_remove(home_carousel_timeout_);
 }
 
+void CatalogWindow::apply_icon_style() {
+    GdkDisplay *display = gtk_widget_get_display(window_);
+    GtkIconTheme *theme = gtk_icon_theme_get_for_display(display);
+    static gboolean resource_theme_added = FALSE;
+    if (!resource_theme_added) {
+        gtk_icon_theme_add_resource_path(theme, "/org/catalog/icons");
+        resource_theme_added = TRUE;
+    }
+    if (const char *name = icon_theme_name(icon_style_))
+        g_object_set(gtk_settings_get_for_display(display),
+                     "gtk-icon-theme-name", name, NULL);
+}
+
 void CatalogWindow::build_ui() {
+    icon_style_ = read_icon_style();
     window_ = adw_application_window_new(app_);
     gtk_window_set_title(GTK_WINDOW(window_), "Catalog");
     gtk_window_set_icon_name(GTK_WINDOW(window_),
                              "package-x-generic-symbolic");
+    apply_icon_style();
 
     toast_overlay_ = adw_toast_overlay_new();
 
@@ -898,6 +976,47 @@ void CatalogWindow::build_ui() {
     g_signal_connect(update_btn_, "clicked", G_CALLBACK(on_update_clicked),
                      this);
     adw_header_bar_pack_end(ADW_HEADER_BAR(header), update_btn_);
+
+    GtkWidget *style_btn = gtk_menu_button_new();
+    gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(style_btn),
+                                  "preferences-system-symbolic");
+    gtk_widget_set_tooltip_text(style_btn, "Icon style");
+    gtk_widget_add_css_class(style_btn, "flat");
+    adw_header_bar_pack_end(ADW_HEADER_BAR(header), style_btn);
+
+    GtkWidget *style_pop = gtk_popover_new();
+    GtkWidget *style_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    gtk_widget_set_margin_start(style_box, 8);
+    gtk_widget_set_margin_end(style_box, 8);
+    gtk_widget_set_margin_top(style_box, 8);
+    gtk_widget_set_margin_bottom(style_box, 8);
+
+    GtkWidget *style_label = gtk_label_new("Icon style");
+    gtk_widget_add_css_class(style_label, "heading");
+    gtk_label_set_xalign(GTK_LABEL(style_label), 0.0f);
+    gtk_widget_set_margin_bottom(style_label, 4);
+    gtk_box_append(GTK_BOX(style_box), style_label);
+
+    static const char *style_labels[] = {"GNOME (Adwaita)", "KDE (Breeze)",
+                                         "Follow system"};
+    GtkWidget *group = nullptr;
+    for (int i = 0; i < 3; i++) {
+        GtkWidget *radio = gtk_check_button_new_with_label(style_labels[i]);
+        if (group)
+            gtk_check_button_set_group(GTK_CHECK_BUTTON(radio),
+                                       GTK_CHECK_BUTTON(group));
+        else
+            group = radio;
+        if (i == static_cast<int>(icon_style_))
+            gtk_check_button_set_active(GTK_CHECK_BUTTON(radio), TRUE);
+        g_object_set_data(G_OBJECT(radio), "style", GINT_TO_POINTER(i));
+        g_signal_connect(radio, "toggled", G_CALLBACK(on_icon_style_toggled),
+                         this);
+        gtk_box_append(GTK_BOX(style_box), radio);
+    }
+
+    gtk_popover_set_child(GTK_POPOVER(style_pop), style_box);
+    gtk_menu_button_set_popover(GTK_MENU_BUTTON(style_btn), style_pop);
 
     stack_ = GTK_WIDGET(adw_view_stack_new());
     adw_view_switcher_set_stack(ADW_VIEW_SWITCHER(view_switcher_),

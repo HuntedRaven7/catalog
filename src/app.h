@@ -10,6 +10,12 @@
 
 namespace catalog {
 
+enum class IconStyle {
+    Gnome = 0,
+    Kde = 1,
+    System = 2,
+};
+
 class CatalogWindow {
 public:
     explicit CatalogWindow(GtkApplication *app);
@@ -48,6 +54,7 @@ private:
     GtkWidget *view_switcher_ = nullptr;
     GtkWidget *stack_ = nullptr;
     GtkApplication *app_ = nullptr;
+    IconStyle icon_style_ = IconStyle::Gnome;
 
     bool busy() const { return busy_count_ > 0; }
 
@@ -90,6 +97,7 @@ private:
     int busy_count_ = 0;
 
     void build_ui();
+    void apply_icon_style();
     GtkWidget *build_list_page(bool browse);
     GtkWidget *build_log_page();
     GtkWidget *build_home_page();
@@ -132,6 +140,7 @@ private:
 
     static void on_installed_selected(GtkListBox *, GtkListBoxRow *, gpointer);
     static void on_browse_selected(GtkListBox *, GtkListBoxRow *, gpointer);
+    static void on_icon_style_toggled(GtkCheckButton *, gpointer);
     static void on_installed_filter_changed(GtkSearchEntry *, gpointer);
     static void on_browse_search_changed(GtkSearchEntry *, gpointer);
     static void on_browse_search_activate(GtkSearchEntry *, gpointer);

@@ -68,6 +68,24 @@ env LD_LIBRARY_PATH=/home/linuxbrew/.linuxbrew/lib ./_build/catalog
 `LD_LIBRARY_PATH` is required at runtime so the binary finds brew's GTK4.
 `univ` is resolved from `$UNIV_BIN` if set, otherwise from `PATH`.
 
+## Icons
+
+The app bundles the Adwaita symbolic icons it uses (from
+[adwaita-icon-theme](https://gitlab.gnome.org/GNOME/adwaita-icon-theme),
+LGPL-3.0-or-later) as GResources, so the header bar, view switcher and package
+rows look right even on desktops whose icon theme lacks the GTK icon names
+(KDE/Breeze misses e.g. `software-update-available-symbolic` and
+`view-list-symbolic`, which is what made them render as fallback blobs).
+
+The gear button in the header bar picks the icon style:
+
+- **GNOME (Adwaita)** (default) — force the Adwaita icon theme
+- **KDE (Breeze)** — use KDE's Breeze icons, with the bundled set filling the gaps
+- **Follow system** — use whatever icon theme the desktop has set
+
+The choice is persisted in `~/.config/catalog/config.ini`
+(`[ui] icon-style = gnome|kde|system`).
+
 ## Platform
 
 Wayland-first: the app is a native Wayland client. GTK4 selects the Wayland

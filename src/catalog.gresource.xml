@@ -4,4 +4,16 @@
     <file>fedora-icon-seeklogo.png</file>
     <file>debian-seeklogo.png</file>
   </gresource>
+  <gresource prefix="/org/catalog">
+    <file>icons/scalable/actions/edit-delete-symbolic.svg</file>
+    <file>icons/scalable/categories/preferences-system-symbolic.svg</file>
+    <file>icons/scalable/actions/edit-find-symbolic.svg</file>
+    <file>icons/scalable/actions/go-home-symbolic.svg</file>
+    <file>icons/scalable/actions/view-list-symbolic.svg</file>
+    <file>icons/scalable/actions/view-refresh-symbolic.svg</file>
+    <file>icons/scalable/mimetypes/package-x-generic-symbolic.svg</file>
+    <file>icons/scalable/places/folder-download-symbolic.svg</file>
+    <file>icons/scalable/status/software-update-available-symbolic.svg</file>
+    <file>icons/scalable/status/system-software-install-symbolic.svg</file>
+  </gresource>
 </gresources>
