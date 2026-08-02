@@ -92,6 +92,42 @@ Wayland-first: the app is a native Wayland client. GTK4 selects the Wayland
 backend automatically and falls back to X11 only if no Wayland compositor is
 available; this has been verified to open on `GdkWaylandDisplay`.
 
+## Building and installing
+
+Dependencies: `meson`, `ninja`, GTK 4 (`gtk4`), `json-glib`. libadapta is
+vendored as a meson subproject and builds with introspection disabled, so no
+`gobject-introspection` is required.
+
+Per-user install (installs to `~/.local`):
+
+```sh
+meson setup _build --prefix "$HOME/.local"
+ninja -C _build
+meson install -C _build
+```
+
+System-wide install (requires root):
+
+```sh
+meson setup _build --prefix /usr --libdir lib
+ninja -C _build
+sudo meson install -C _build
+```
+
+Installed files:
+
+- `bin/catalog` — the application
+- `share/applications/io.univ.Catalog.desktop` — launcher entry (app id
+  `io.univ.Catalog`, icon `catalog`)
+- `share/icons/hicolor/{16..512}x{16..512}/apps/catalog.png` — app icon (the
+  coupon logo from `images/Coupon.png`)
+- the libadapta fallback subproject installs its own lib/theme/locale files
+
+The desktop entry and icon are picked up by both GNOME and KDE; after a
+system-wide install run `gtk-update-icon-cache -f /usr/share/icons/hicolor`.
+A per-user install needs `~/.local/bin` on `$PATH` for the `Exec=catalog` line
+to resolve.
+
 ## Project layout
 
 | File | Responsibility |

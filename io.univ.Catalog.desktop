@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Catalog
+Comment=Package store for univ
+GenericName=Package Manager
+Exec=catalog
+Icon=catalog
+Type=Application
+Terminal=false
+StartupNotify=true
+StartupWMClass=Catalog
+Categories=System;PackageManager;GTK;GNOME;KDE;
+Keywords=packages;univ;install;software;

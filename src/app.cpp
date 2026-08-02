@@ -945,8 +945,7 @@ void CatalogWindow::build_ui() {
     icon_style_ = read_icon_style();
     window_ = adw_application_window_new(app_);
     gtk_window_set_title(GTK_WINDOW(window_), "Catalog");
-    gtk_window_set_icon_name(GTK_WINDOW(window_),
-                             "package-x-generic-symbolic");
+    gtk_window_set_icon_name(GTK_WINDOW(window_), "catalog");
     apply_icon_style();
 
     toast_overlay_ = adw_toast_overlay_new();

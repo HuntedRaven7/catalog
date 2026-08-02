@@ -8,7 +8,8 @@ project('catalog', 'cpp', 'c',
   ])
 
 adapta_dep = dependency('libadapta-1', version : '>= 1.5.0',
-  fallback : ['libadapta', 'libadapta_dep'])
+  fallback : ['libadapta', 'libadapta_dep'],
+  default_options : ['introspection=disabled'])
 json_glib_dep = dependency('json-glib-1.0')
 
 gnome = import('gnome')
@@ -30,3 +31,11 @@ executable('catalog',
   install : true,
   install_rpath : '$ORIGIN/../' + get_option('libdir'),
 )
+
+install_data('io.univ.Catalog.desktop',
+  install_dir : get_option('datadir') / 'applications')
+
+foreach size : ['16', '24', '32', '48', '64', '128', '256', '512']
+  install_data('images/icons/hicolor/' + size + 'x' + size + '/apps/catalog.png',
+    install_dir : get_option('datadir') / 'icons' / 'hicolor' / (size + 'x' + size) / 'apps')
+endforeach
