@@ -448,12 +448,6 @@ void CatalogWindow::DetailPane::build() {
     gtk_label_set_selectable(GTK_LABEL(description), TRUE);
     gtk_label_set_xalign(GTK_LABEL(description), 0.0f);
 
-    depends = gtk_label_new("");
-    gtk_widget_add_css_class(depends, "dim-label");
-    gtk_label_set_wrap(GTK_LABEL(depends), TRUE);
-    gtk_label_set_selectable(GTK_LABEL(depends), TRUE);
-    gtk_label_set_xalign(GTK_LABEL(depends), 0.0f);
-
     GtkWidget *separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
 
     GtkWidget *buttons = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
@@ -471,7 +465,6 @@ void CatalogWindow::DetailPane::build() {
     gtk_box_append(GTK_BOX(box), meta);
     gtk_box_append(GTK_BOX(box), separator);
     gtk_box_append(GTK_BOX(box), description);
-    gtk_box_append(GTK_BOX(box), depends);
     gtk_box_append(GTK_BOX(box), buttons);
 
     adw_clamp_set_child(ADW_CLAMP(clamp), box);
@@ -489,6 +482,76 @@ void CatalogWindow::DetailPane::build() {
     gtk_stack_add_named(GTK_STACK(stack), empty, "empty");
     gtk_stack_add_named(GTK_STACK(stack), content, "content");
     gtk_stack_set_visible_child_name(GTK_STACK(stack), "empty");
+
+    deps_empty = gtk_label_new("No dependencies");
+    gtk_widget_add_css_class(deps_empty, "dim-label");
+    gtk_widget_set_halign(deps_empty, GTK_ALIGN_CENTER);
+    gtk_widget_set_margin_top(deps_empty, 12);
+    gtk_widget_set_visible(deps_empty, TRUE);
+
+    deps_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(deps_list),
+                                    GTK_SELECTION_SINGLE);
+    gtk_list_box_set_placeholder(GTK_LIST_BOX(deps_list), deps_empty);
+
+    GtkWidget *deps_scroll = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(deps_scroll),
+                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_has_frame(GTK_SCROLLED_WINDOW(deps_scroll), FALSE);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(deps_scroll), deps_list);
+
+    GtkWidget *deps_heading = gtk_label_new("Depends on");
+    gtk_widget_add_css_class(deps_heading, "heading");
+    gtk_widget_set_halign(deps_heading, GTK_ALIGN_START);
+    gtk_widget_set_margin_top(deps_heading, 10);
+    gtk_widget_set_margin_start(deps_heading, 12);
+    gtk_widget_set_margin_end(deps_heading, 12);
+    gtk_widget_set_margin_bottom(deps_heading, 4);
+
+    GtkWidget *deps_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_box_append(GTK_BOX(deps_box), deps_heading);
+    gtk_box_append(GTK_BOX(deps_box), deps_scroll);
+
+    paned = gtk_paned_new(GTK_ORIENTATION_VERTICAL);
+    gtk_paned_set_start_child(GTK_PANED(paned), stack);
+    gtk_paned_set_end_child(GTK_PANED(paned), deps_box);
+    gtk_paned_set_wide_handle(GTK_PANED(paned), FALSE);
+    gtk_paned_set_position(GTK_PANED(paned), 513);
+}
+
+void CatalogWindow::DetailPane::show_deps(const std::string &depends) {
+    clear_list(GTK_LIST_BOX(deps_list));
+    if (depends.empty())
+        return;
+
+    std::string::size_type start = 0;
+    while (start <= depends.size()) {
+        std::string::size_type comma = depends.find(',', start);
+        if (comma == std::string::npos)
+            comma = depends.size();
+        std::string item = depends.substr(start, comma - start);
+        start = comma + 1;
+        while (!item.empty() && item.front() == ' ')
+            item.erase(item.begin());
+        while (!item.empty() && item.back() == ' ')
+            item.pop_back();
+        if (item.empty())
+            continue;
+
+        GtkWidget *row = gtk_list_box_row_new();
+        GtkWidget *label = gtk_label_new(item.c_str());
+        gtk_widget_add_css_class(label, "body");
+        gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
+        gtk_widget_set_margin_start(label, 12);
+        gtk_widget_set_margin_end(label, 12);
+        gtk_widget_set_margin_top(label, 4);
+        gtk_widget_set_margin_bottom(label, 4);
+        gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), TRUE);
+        gtk_list_box_row_set_selectable(GTK_LIST_BOX_ROW(row), TRUE);
+        g_object_set_data_full(G_OBJECT(row), "dep", g_strdup(item.c_str()),
+                               g_free);
+        gtk_list_box_append(GTK_LIST_BOX(deps_list), row);
+    }
 }
 
 void CatalogWindow::DetailPane::show_package(const Package &p) {
@@ -502,19 +565,14 @@ void CatalogWindow::DetailPane::show_package(const Package &p) {
         GTK_LABEL(description),
         p.description.empty() ? "No description available."
                               : p.description.c_str());
-    if (p.depends.empty()) {
-        gtk_widget_set_visible(depends, FALSE);
-    } else {
-        gtk_widget_set_visible(depends, TRUE);
-        gtk_label_set_text(GTK_LABEL(depends),
-                           ("Depends: " + p.depends).c_str());
-    }
+    show_deps(p.depends);
 }
 
 void CatalogWindow::DetailPane::clear() {
     gtk_stack_set_visible_child_name(GTK_STACK(stack), "empty");
     gtk_widget_set_sensitive(install_btn, FALSE);
     gtk_widget_set_sensitive(uninstall_btn, FALSE);
+    clear_list(GTK_LIST_BOX(deps_list));
 }
 
 void CatalogWindow::on_installed_selected(GtkListBox *, GtkListBoxRow *row,
@@ -717,6 +775,9 @@ gboolean CatalogWindow::on_key_pressed(GtkEventControllerKey *, guint keyval,
                                        gpointer data) {
     auto *self = static_cast<CatalogWindow *>(data);
 
+    if (self->init_screen_ && gtk_widget_get_visible(self->init_screen_))
+        return GDK_EVENT_STOP;
+
     if (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK |
                  GDK_META_MASK))
         return GDK_EVENT_PROPAGATE;
@@ -762,12 +823,39 @@ void CatalogWindow::on_browse_uninstall_clicked(GtkButton *, gpointer data) {
     static_cast<CatalogWindow *>(data)->browse_uninstall();
 }
 
+std::string CatalogWindow::dep_name(const std::string &item) {
+    std::string name;
+    for (char c : item) {
+        if (c == ' ' || c == '(')
+            break;
+        if (c == '|')
+            break;
+        if (c == ':')
+            break;
+        name.push_back(c);
+    }
+    return name;
+}
+
+void CatalogWindow::on_dep_selected(GtkListBox *, GtkListBoxRow *row,
+                                    gpointer data) {
+    auto *self = static_cast<CatalogWindow *>(data);
+    if (!row)
+        return;
+    const char *dep = static_cast<const char *>(g_object_get_data(G_OBJECT(row), "dep"));
+    if (!dep)
+        return;
+    self->open_browse(dep_name(dep), "");
+}
+
 CatalogWindow::CatalogWindow(GtkApplication *app) : app_(app) {
     build_ui();
     populate_repos_page();
     gtk_window_set_default_size(GTK_WINDOW(window_), 1080, 680);
     refresh_installed();
     load_home();
+    if (!has_repos())
+        show_init_screen();
 }
 
 CatalogWindow::~CatalogWindow() {
@@ -833,7 +921,13 @@ void CatalogWindow::build_ui() {
 
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar), header);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar), stack_);
-    adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(toast_overlay_), toolbar);
+
+    GtkWidget *overlay = gtk_overlay_new();
+    gtk_overlay_set_child(GTK_OVERLAY(overlay), toolbar);
+    adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(toast_overlay_), overlay);
+
+    build_init_screen();
+    gtk_overlay_add_overlay(GTK_OVERLAY(overlay), init_screen_);
 
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(window_),
                                        toast_overlay_);
@@ -912,10 +1006,13 @@ GtkWidget *CatalogWindow::build_list_page(bool browse) {
     }
 
     gtk_paned_set_start_child(GTK_PANED(paned), left);
-    gtk_paned_set_end_child(GTK_PANED(paned), detail.stack);
+    gtk_paned_set_end_child(GTK_PANED(paned), detail.paned);
     gtk_widget_set_size_request(left, 380, -1);
     gtk_paned_set_position(GTK_PANED(paned), 400);
     gtk_paned_set_wide_handle(GTK_PANED(paned), FALSE);
+
+    g_signal_connect(detail.deps_list, "row-selected",
+                     G_CALLBACK(on_dep_selected), this);
 
     return paned;
 }
@@ -1044,6 +1141,127 @@ GtkWidget *CatalogWindow::build_repos_page() {
     repos_list_ = list;
     repos_placeholder_ = placeholder;
     return box;
+}
+
+static void ensure_init_styles(GtkWidget *anchor) {
+    static gboolean added = FALSE;
+    if (added)
+        return;
+    GtkCssProvider *provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_string(
+        provider,
+        ".catalog-init-dim { background-color: rgba(0, 0, 0, 0.35); }\n"
+        ".catalog-init-btn {\n"
+        "  background-color: #62a0ea;\n"
+        "  color: #ffffff;\n"
+        "  border-radius: 8px;\n"
+        "  padding: 10px 28px;\n"
+        "  font-weight: 600;\n"
+        "}\n"
+        ".catalog-init-btn:hover { background-color: #73adf1; }\n"
+        ".catalog-init-btn:disabled { background-color: #9db9de; }\n");
+    gtk_style_context_add_provider_for_display(
+        gtk_widget_get_display(anchor), GTK_STYLE_PROVIDER(provider),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    added = TRUE;
+}
+
+void CatalogWindow::build_init_screen() {
+    ensure_init_styles(window_);
+
+    GtkWidget *dim = gtk_overlay_new();
+    gtk_widget_set_hexpand(dim, TRUE);
+    gtk_widget_set_vexpand(dim, TRUE);
+    gtk_widget_set_halign(dim, GTK_ALIGN_FILL);
+    gtk_widget_set_valign(dim, GTK_ALIGN_FILL);
+    gtk_widget_add_css_class(dim, "catalog-init-dim");
+
+    GtkWidget *catcher = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_hexpand(catcher, TRUE);
+    gtk_widget_set_vexpand(catcher, TRUE);
+    gtk_widget_set_halign(catcher, GTK_ALIGN_FILL);
+    gtk_widget_set_valign(catcher, GTK_ALIGN_FILL);
+    GtkGesture *click = gtk_gesture_click_new();
+    g_signal_connect(click, "pressed",
+                     G_CALLBACK(+[](GtkGesture *, int, double, gpointer) {}),
+                     nullptr);
+    gtk_widget_add_controller(catcher, GTK_EVENT_CONTROLLER(click));
+    gtk_overlay_set_child(GTK_OVERLAY(dim), catcher);
+
+    GtkWidget *center = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+    gtk_widget_set_halign(center, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(center, GTK_ALIGN_CENTER);
+
+    GtkWidget *title = gtk_label_new("No repositories configured");
+    gtk_widget_add_css_class(title, "title-1");
+
+    GtkWidget *subtitle = gtk_label_new(
+        "Initialize univ to create the store and add the default deb & rpm "
+        "repositories.");
+    gtk_widget_add_css_class(subtitle, "body");
+    gtk_widget_add_css_class(subtitle, "dim-label");
+    gtk_label_set_wrap(GTK_LABEL(subtitle), TRUE);
+    gtk_label_set_justify(GTK_LABEL(subtitle), GTK_JUSTIFY_CENTER);
+
+    init_btn_ = gtk_button_new_with_label("Initialize");
+    gtk_widget_add_css_class(init_btn_, "catalog-init-btn");
+    g_signal_connect(init_btn_, "clicked", G_CALLBACK(on_init_clicked), this);
+
+    gtk_box_append(GTK_BOX(center), title);
+    gtk_box_append(GTK_BOX(center), subtitle);
+    gtk_box_append(GTK_BOX(center), init_btn_);
+    gtk_overlay_add_overlay(GTK_OVERLAY(dim), center);
+
+    gtk_widget_set_visible(dim, FALSE);
+    init_screen_ = dim;
+}
+
+void CatalogWindow::show_init_screen() {
+    if (init_screen_)
+        gtk_widget_set_visible(init_screen_, TRUE);
+}
+
+void CatalogWindow::hide_init_screen() {
+    if (init_screen_)
+        gtk_widget_set_visible(init_screen_, FALSE);
+}
+
+bool CatalogWindow::has_repos() const {
+    std::string base = std::string(g_get_home_dir()) + "/.local/univ/";
+    std::string paths[] = {base + "debrepos.conf", base + "rpmrepos.conf"};
+    for (const std::string &path : paths) {
+        g_autofree char *contents = nullptr;
+        if (!g_file_get_contents(path.c_str(), &contents, nullptr, nullptr))
+            continue;
+        char **lines = g_strsplit(contents, "\n", -1);
+        for (char **line = lines; *line; line++) {
+            char *trimmed = g_strstrip(*line);
+            if (*trimmed == '\0' || *trimmed == '#')
+                continue;
+            g_strfreev(lines);
+            return true;
+        }
+        g_strfreev(lines);
+    }
+    return false;
+}
+
+void CatalogWindow::on_init_clicked(GtkButton *, gpointer data) {
+    auto *self = static_cast<CatalogWindow *>(data);
+    if (self->busy())
+        return;
+    gtk_widget_set_sensitive(self->init_btn_, FALSE);
+    self->start_task(
+        "initializing univ", {"init"}, [self](int code) {
+            gtk_widget_set_sensitive(self->init_btn_, TRUE);
+            if (code == 0 && self->has_repos()) {
+                self->populate_repos_page();
+                self->populate_repos();
+                self->load_home();
+                self->refresh_installed();
+                self->hide_init_screen();
+            }
+        });
 }
 
 void CatalogWindow::populate_repos_page() {
@@ -1265,6 +1483,8 @@ void CatalogWindow::populate_installed() {
         message = "Could not list packages: " + installed_error_;
     else if (!installed_loaded_)
         message = "Loading installed packages…";
+    else if (installed_no_repos_)
+        message = "No repositories configured";
     else if (installed_.empty())
         message = "No packages installed";
     else if (!any)
@@ -1275,6 +1495,15 @@ void CatalogWindow::populate_installed() {
 void CatalogWindow::refresh_installed() {
     installed_loaded_ = false;
     installed_error_.clear();
+    installed_no_repos_ = false;
+    if (!has_repos()) {
+        installed_loaded_ = true;
+        installed_.clear();
+        installed_no_repos_ = true;
+        populate_installed();
+        update_buttons();
+        return;
+    }
     populate_installed();
 
     query_packages({"list", "--json"},
@@ -1409,14 +1638,15 @@ void CatalogWindow::update_buttons() {
 }
 
 void CatalogWindow::start_task(const std::string &title,
-                               std::vector<std::string> args) {
+                               std::vector<std::string> args,
+                               std::function<void(int)> on_done) {
     if (busy())
         return;
     log("> " + title);
     set_busy(true);
     stream_task(std::move(args),
                 [this](const std::string &line) { log(line); },
-                [this, title](int code) {
+                [this, title, on_done](int code) {
                     set_busy(false);
                     log("[exit " + std::to_string(code) + "] " + title);
                     if (code == 0)
@@ -1426,6 +1656,8 @@ void CatalogWindow::start_task(const std::string &title,
                               ")");
                     refresh_installed();
                     update_buttons();
+                    if (on_done)
+                        on_done(code);
                 });
 }
 

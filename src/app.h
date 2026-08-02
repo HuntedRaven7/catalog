@@ -23,16 +23,19 @@ public:
 private:
     struct DetailPane {
         GtkWidget *stack = nullptr;
+        GtkWidget *paned = nullptr;
+        GtkWidget *deps_list = nullptr;
+        GtkWidget *deps_empty = nullptr;
         GtkWidget *name = nullptr;
         GtkWidget *version = nullptr;
         GtkWidget *meta = nullptr;
         GtkWidget *description = nullptr;
-        GtkWidget *depends = nullptr;
         GtkWidget *install_btn = nullptr;
         GtkWidget *uninstall_btn = nullptr;
 
         void build();
         void show_package(const Package &package);
+        void show_deps(const std::string &depends);
         void clear();
     };
 
@@ -56,6 +59,7 @@ private:
     std::string installed_filter_;
     std::string installed_error_;
     bool installed_loaded_ = false;
+    bool installed_no_repos_ = false;
     int installed_selected_ = -1;
 
     GtkWidget *browse_list_ = nullptr;
@@ -74,6 +78,9 @@ private:
     std::vector<Package> home_candidates_;
     guint home_carousel_timeout_ = 0;
 
+    GtkWidget *init_screen_ = nullptr;
+    GtkWidget *init_btn_ = nullptr;
+
     GtkWidget *repos_list_ = nullptr;
     GtkWidget *repos_placeholder_ = nullptr;
 
@@ -87,6 +94,11 @@ private:
     GtkWidget *build_log_page();
     GtkWidget *build_home_page();
     GtkWidget *build_repos_page();
+
+    void build_init_screen();
+    void show_init_screen();
+    void hide_init_screen();
+    bool has_repos() const;
 
     void populate_installed();
     void refresh_installed();
@@ -104,7 +116,8 @@ private:
     bool is_installed(const std::string &name) const;
     void update_buttons();
 
-    void start_task(const std::string &title, std::vector<std::string> args);
+    void start_task(const std::string &title, std::vector<std::string> args,
+                    std::function<void(int)> on_done = nullptr);
     void set_busy(bool busy);
     void log(const std::string &line);
     void toast(const std::string &message);
@@ -114,6 +127,8 @@ private:
     void browse_install();
     void browse_uninstall();
     void upgrade_all();
+
+    static std::string dep_name(const std::string &item);
 
     static void on_installed_selected(GtkListBox *, GtkListBoxRow *, gpointer);
     static void on_browse_selected(GtkListBox *, GtkListBoxRow *, gpointer);
@@ -126,12 +141,14 @@ private:
     static void on_add_repo_submit(GtkButton *, gpointer);
     static void on_remove_repo_clicked(GtkButton *, gpointer);
     static gboolean on_featured_tick(gpointer);
+    static void on_init_clicked(GtkButton *, gpointer);
     static void on_refresh_clicked(GtkButton *, gpointer);
     static void on_update_clicked(GtkButton *, gpointer);
     static void on_installed_install_clicked(GtkButton *, gpointer);
     static void on_installed_uninstall_clicked(GtkButton *, gpointer);
     static void on_browse_install_clicked(GtkButton *, gpointer);
     static void on_browse_uninstall_clicked(GtkButton *, gpointer);
+    static void on_dep_selected(GtkListBox *, GtkListBoxRow *, gpointer);
     static gboolean on_key_pressed(GtkEventControllerKey *, guint, guint,
                                    GdkModifierType, gpointer);
 };

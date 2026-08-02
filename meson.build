@@ -28,4 +28,5 @@ executable('catalog',
   src, resources,
   dependencies : [adapta_dep, json_glib_dep],
   install : true,
+  install_rpath : '$ORIGIN/../' + get_option('libdir'),
 )
