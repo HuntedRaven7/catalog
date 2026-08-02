@@ -64,8 +64,15 @@ private:
     DetailPane browse_detail_;
     std::vector<Package> browse_;
     std::string browse_query_;
+    std::string browse_repo_;
     guint browse_timeout_ = 0;
     int browse_selected_ = -1;
+
+    GtkWidget *home_featured_ = nullptr;
+    GtkWidget *home_featured_dots_ = nullptr;
+    GtkWidget *home_repos_ = nullptr;
+    std::vector<Package> home_candidates_;
+    guint home_carousel_timeout_ = 0;
 
     GtkWidget *log_view_ = nullptr;
     GtkTextBuffer *log_buffer_ = nullptr;
@@ -75,11 +82,17 @@ private:
     void build_ui();
     GtkWidget *build_list_page(bool browse);
     GtkWidget *build_log_page();
+    GtkWidget *build_home_page();
 
     void populate_installed();
     void refresh_installed();
     void do_search();
     void populate_browse();
+    void load_home();
+    void populate_home();
+    void populate_repos();
+    void open_browse(const std::string &query, const std::string &repo);
+    void show_add_repo_dialog();
 
     bool is_installed(const std::string &name) const;
     void update_buttons();
@@ -100,6 +113,11 @@ private:
     static void on_installed_filter_changed(GtkSearchEntry *, gpointer);
     static void on_browse_search_changed(GtkSearchEntry *, gpointer);
     static void on_browse_search_activate(GtkSearchEntry *, gpointer);
+    static void on_featured_clicked(GtkButton *, gpointer);
+    static void on_repo_clicked(GtkButton *, gpointer);
+    static void on_add_repo_clicked(GtkButton *, gpointer);
+    static void on_add_repo_submit(GtkButton *, gpointer);
+    static gboolean on_featured_tick(gpointer);
     static void on_refresh_clicked(GtkButton *, gpointer);
     static void on_update_clicked(GtkButton *, gpointer);
     static void on_installed_install_clicked(GtkButton *, gpointer);

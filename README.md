@@ -13,6 +13,7 @@ also compile against plain libadwaita unchanged.
 
 | View | What it does |
 | --- | --- |
+| Home | a large auto-scrolling banner of five random featured packages plus buttons for every configured repository |
 | Installed | list installed packages, filter them, view details, reinstall or uninstall |
 | Browse | search the deb/rpm repo indexes and install results |
 | Log | live output of every `univ` operation |
